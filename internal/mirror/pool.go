@@ -308,8 +308,13 @@ func Supports(m config.Mirror, category string) bool {
 //   - pathfetch（xget 形态）：只探测 raw 文件目标——实测长期可用；
 //     codeload / 仓库资源形态上游行为已不稳定（404/429 有实测记录），
 //     探测它们只会给源记假失败、压低得分，让它在真实请求里轮不上。
+//   - 仓库传输目标只测 KindGitClone 源：前缀源的得分已由 raw / 网页目标
+//     反映，而得分是跨类别共享的，再叠加仓库传输失败会连累它们。
 func ProbeTargetOK(m config.Mirror, t config.ProbeTarget) bool {
 	if m.Kind == config.KindPathFetch && t.Host != "raw.githubusercontent.com" {
+		return false
+	}
+	if t.Category == config.CatClone && m.Kind != config.KindGitClone {
 		return false
 	}
 	return true
@@ -502,6 +507,11 @@ func (p *Pool) httpProbe(ctx context.Context, m config.Mirror, t config.ProbeTar
 		// 429 是「服务活着但在限流」的信号，不指示源的健康度：
 		// 与请求期 429「换下一源重试」的语义对齐，探测侧按不适用处理，
 		// 不并入得分表（限流恢复前不再惩罚该源）。
+		return Result{}, errProbeSkip
+	}
+	if resp.StatusCode == http.StatusForbidden && t.Host == "api.github.com" {
+		// GitHub 对公共出口 / 镜像出口的 api.github.com 请求会限流返回 403，
+		// 这属于探测口径问题而非源故障（官方直连同样会 403）。
 		return Result{}, errProbeSkip
 	}
 	if resp.StatusCode >= 400 {

@@ -245,14 +245,31 @@ func HostIsDirectPreferred(host string) bool {
 
 // DomainProbeTargets 返回 DNS 优选时使用的探测目标，
 // 每一项都附带一个体积可控的真实文件路径用于吞吐测速。
+//
+// 这里只放「每个域名唯一」的目标：同一域名出现两次会让 OptimizeAll
+// 按域名聚合的结果互相覆盖。仓库传输（CatClone）目标见 MirrorProbeTargets。
+//
+// objects.githubusercontent.com 不在此列：它的资源路径带签名令牌，
+// 没有可静态复用的路径，根路径实测恒为 404（官方直连也一样），
+// 放进来只会让所有源每轮都被记一次假失败。
 func DomainProbeTargets() []ProbeTarget {
 	return []ProbeTarget{
 		{Host: "github.com", Path: "/favicon.ico", Category: CatWeb},
 		{Host: "api.github.com", Path: "/meta", Category: CatWeb},
 		{Host: "raw.githubusercontent.com", Path: "/github/gitignore/main/Go.gitignore", Category: CatRaw},
 		{Host: "codeload.github.com", Path: "/github/gitignore/tar.gz/refs/heads/main", Category: CatRaw},
-		{Host: "objects.githubusercontent.com", Path: "/", Category: CatRaw},
 	}
+}
+
+// MirrorProbeTargets 返回镜像源测速使用的目标列表。
+//
+// 在 DomainProbeTargets 之外补一个仓库传输目标，让 KindGitClone 源
+// 也能参与测速——此前 CatClone 没有任何目标，kkgithub 从未被测过。
+// 该目标不放进 DomainProbeTargets，避免 DNS 优选对 github.com 重复优化。
+func MirrorProbeTargets() []ProbeTarget {
+	return append(DomainProbeTargets(), ProbeTarget{
+		Host: "github.com", Path: "/git/git/info/refs?service=git-upload-pack", Category: CatClone,
+	})
 }
 
 // builtinCandidateIPs 是各受管域名的内置候选 IP 兜底。
@@ -296,8 +313,11 @@ type ProbeTarget struct {
 const DefaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
 	"(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-// ProbeUserAgent 是测速探测使用的 UA，标识自身便于镜像站统计。
-const ProbeUserAgent = "ghpp-probe/1.0"
+// ProbeUserAgent 是测速探测使用的 UA。
+//
+// 必须与真实转发保持一致：部分镜像（xget.xi-xu.me、github.boki.moe 等）
+// 会拦截自定义 UA 返回 403，用专用探测 UA 会把这些健康源误判为故障。
+const ProbeUserAgent = DefaultUserAgent
 
 // ScoreHalfLife 是测速得分的半衰期，越久远的成绩权重越低。
 const ScoreHalfLife = 10 * time.Minute

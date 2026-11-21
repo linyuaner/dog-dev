@@ -687,7 +687,7 @@ func (a *App) sweepMirrorsCore(ctx context.Context, maxBytes int64, resetCooldow
 		a.pool.ResetCooldown()
 	}
 
-	targets := config.DomainProbeTargets()
+	targets := config.MirrorProbeTargets()
 
 	// Sweep 内部会根据源类型与目标分类自动匹配，无需在此预组合。
 	// 若另一轮测速正在进行，Sweep 返回 nil——本次视为"未执行"。
@@ -731,7 +731,7 @@ func (a *App) SweepOne(ctx context.Context, id string) ([]mirror.Result, error) 
 		return nil, fmt.Errorf("未找到镜像源 %s", id)
 	}
 
-	targets := config.DomainProbeTargets()
+	targets := config.MirrorProbeTargets()
 	filtered := make([]config.ProbeTarget, 0, len(targets))
 	for _, t := range targets {
 		if mirror.Supports(target, t.Category) {
